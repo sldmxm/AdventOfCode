@@ -2,7 +2,7 @@ import collections
 import heapq
 import time
 
-def read_data(file_path: str) -> dict:
+def read_data(file_path: str) -> list:
     with open(file_path) as f:
         lines = f.readlines()
     data = []
