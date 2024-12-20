@@ -20,8 +20,7 @@ def read_data(file_path: str) -> dict:
                 data['end'] = (row, col)
                 char = '.'
             map_line.append(char)
-        line = map_line
-        data['maze'].append(line)
+        data['maze'].append(map_line)
     return data
 
 def solve_part1(data):
@@ -56,7 +55,7 @@ def solve_part2(data):
         score, y, x, direction, path = heapq.heappop(heap)
         if (y, x) == end:
             best_paths |= set(path)
-        if end in seen and score > seen[end]:
+        if end in seen and score >= seen[end]:
             return len(best_paths)
         for new_direction, (dy, dx) in enumerate(MOVES):
             ny, nx = y + dy, x + dx
