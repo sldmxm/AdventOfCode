@@ -17,14 +17,14 @@ def solve_part1(data):
         connections[right].add(left)
 
     res = set()
-    for key, nodes in connections.items():
-        if len(nodes) >= 2 and key[0] == 't':
+    for root, nodes in connections.items():
+        if len(nodes) >= 2 and root[0] == 't':
             cur = set(nodes)
             for second_node in nodes:
                 cur.remove(second_node)
                 if third_nodes := cur & connections[second_node]:
                     for third_node in third_nodes:
-                        res.add(tuple(sorted([key, second_node, third_node])))
+                        res.add(tuple(sorted([root, second_node, third_node])))
     return len(res)
 
 def solve_part2(data):
@@ -35,8 +35,8 @@ def solve_part2(data):
 
     res = tuple()
 
-    for key, nodes in connections.items():
-        direct_connected_nodes = {key}
+    for root, nodes in connections.items():
+        direct_connected_nodes = {root}
         connections_to_check = []
         for node in nodes:
             common_links = len(connections[node] & nodes)
