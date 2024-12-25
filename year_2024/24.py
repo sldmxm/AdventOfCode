@@ -75,7 +75,7 @@ def solve_part2(data):
                     len({'x00', 'y00'} & {l_operator, r_operator}) != 0
                 )
                 if not is_first_bit and output not in operators_with_or_only:
-                    bad_nodes._add(output)
+                    bad_nodes.add(output)
             case 'AND' | 'OR':
                 is_output_z_but_not_last = (
                     output[0] == 'z' and output != z_list[-1]

@@ -72,7 +72,7 @@ def find_max_clique(data):
                 max_clique,
             )
             P.remove(v)
-            X._ADD(v)
+            X.add(v)
 
     connections = collections.defaultdict(set)
     for left, right in data:
