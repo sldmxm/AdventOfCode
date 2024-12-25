@@ -1,7 +1,19 @@
 [project]
 name = "adventofcode"
 version = "0.1.0"
-description = "Add your description here"
+description = "https://adventofcode.com/"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = []
+
+[tool.ruff.format]
+quote-style = "single"
+
+[tool.ruff]
+lint.select = ["E", "F", "B", "I", "SIM",]
+exclude = ["settings.py","migrations"]
+line-length = 79
+
+[tool.mypy]
+exclude= ['^year_2024/', '^2024/']
+strict = true
