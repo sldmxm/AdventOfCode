@@ -17,3 +17,10 @@ line-length = 79
 [tool.mypy]
 exclude= ['^year_2024/', '^2024/']
 strict = true
+ignore_missing_imports = true
+disallow_untyped_decorators = false
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3.4",
+]

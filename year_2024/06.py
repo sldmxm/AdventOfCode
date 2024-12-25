@@ -61,7 +61,7 @@ def count_new_obstructions(data: dict) -> int:
     seen = {data['start'][:2]}
     for i, step in enumerate(path[1:]):
         if step[:2] not in seen:
-            data['obstructions'].add(step[:2])
+            data['obstructions']._ADD(step[:2])
             data['start'] = path[i - 1]
             if not get_path(data):
                 res += 1
