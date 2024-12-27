@@ -2,6 +2,8 @@ import time
 import typing
 from dataclasses import dataclass
 
+from utils.download_data import check_and_download_data
+
 
 @dataclass
 class Instruction:
@@ -74,29 +76,36 @@ def solve_part1(data: list[int]) -> int:
     return comp.run_whole_code()[0]
 
 
-def solve_part2(data: list[int]) -> int | None:
+def solve_part2(data: list[int], goal: int) -> int | None:
     for noun in range(100):
         for verb in range(100):
             new_data = data[:]
             new_data[1:3] = [noun, verb]
             comp = IntcodeComp(code=new_data)
-            if comp.run_whole_code()[0] == 19690720:
+            if comp.run_whole_code()[0] == goal:
                 return 100 * noun + verb
     return None
 
 
 def main() -> None:
-    data = read_data(f'data/{__file__.split("/")[-1][:-3]}.txt')
+    data_file_path = None
+    try:
+        data_file_path = check_and_download_data(__file__)
+    except Exception as e:
+        print(f'ERROR: {e}')
 
-    start = time.monotonic()
-    res = solve_part1(data)
-    print('Part 1:', res)
-    print(time.monotonic() - start)
+    if data_file_path:
+        data = read_data(data_file_path)
 
-    start = time.monotonic()
-    res2 = solve_part2(data)
-    print('Part 2:', res2)
-    print(time.monotonic() - start)
+        start = time.monotonic()
+        res = solve_part1(data)
+        print('Part 1:', res)
+        print(time.monotonic() - start)
+
+        start = time.monotonic()
+        res2 = solve_part2(data, goal=19690720)
+        print('Part 2:', res2)
+        print(time.monotonic() - start)
 
 
 if __name__ == '__main__':
