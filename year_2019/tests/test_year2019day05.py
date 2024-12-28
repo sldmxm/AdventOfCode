@@ -2,10 +2,8 @@ from unittest.mock import mock_open, patch
 
 import pytest
 
-from year_2019.year_2019_day_05 import (
-    IntcodeComp,
-    read_data,
-)
+from year_2019.intcode import IntcodeComp
+from year_2019.year_2019_day_05 import read_data
 
 TEST_DATA_DAY_2 = """
             1,12,2,3,1,1,2,3,1,3,4,3,1,5,0,3,2,9,1,19,1,19,5,23,1,23,6,27,2,9,27,31,
@@ -108,8 +106,8 @@ def test_intcode_comp_inp_out(
     data: str, inp_data: int, expected_code: str, expected_output: list[int]
 ) -> None:
     code = list(map(int, data.split(',')))
-    comp = IntcodeComp(code, inp_data)
-    comp.run_whole_code()
+    comp = IntcodeComp(code)
+    comp.run_whole_code([inp_data])
     assert comp.get_memory() == list(map(int, expected_code.split(',')))
     assert comp.get_output() == expected_output
 
@@ -144,8 +142,8 @@ def est_v02_intcode_comp_jump_instructions_with_input(
     data: str, input_data: int, expected_output: list[int]
 ) -> None:
     code = list(map(int, data.split(',')))
-    comp = IntcodeComp(code, input_data)
-    comp.run_whole_code()
+    comp = IntcodeComp(code)
+    comp.run_whole_code([input_data])
     assert comp.get_output() == expected_output
 
 
@@ -169,20 +167,20 @@ def test_intcode_comp_lt_eq_instructions(
     data: str, input_data: int, expected_output: list[int]
 ) -> None:
     code = list(map(int, data.split(',')))
-    comp = IntcodeComp(code, input_data)
-    comp.run_whole_code()
+    comp = IntcodeComp(code)
+    comp.run_whole_code([input_data])
     assert comp.get_output() == expected_output
 
 
 def test_solve_part1() -> None:
     code = list(map(int, TEST_DATA_DAY_5.split(',')))
-    comp = IntcodeComp(code, 1)
-    comp.run_whole_code()
+    comp = IntcodeComp(code)
+    comp.run_whole_code([1])
     assert comp.get_output()[-1] == 16209841
 
 
 def test_solve_part2() -> None:
     code = list(map(int, TEST_DATA_DAY_5.split(',')))
-    comp = IntcodeComp(code, 5)
-    comp.run_whole_code()
+    comp = IntcodeComp(code)
+    comp.run_whole_code([5])
     assert comp.get_output()[-1] == 8834787
