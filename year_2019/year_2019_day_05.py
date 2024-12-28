@@ -221,8 +221,6 @@ class IntcodeComp:
             instruction = IntcodeComp._OPERATIONS[op_code]
             if instruction == IntcodeComp._HLT:
                 break
-            # print(instruction)
-            # print(self._program)
             instruction.run(self._program)
 
     def get_memory(self) -> list[int]:

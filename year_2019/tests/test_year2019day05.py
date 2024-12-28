@@ -5,7 +5,6 @@ import pytest
 from year_2019.year_2019_day_05 import (
     IntcodeComp,
     read_data,
-    # solve_part2,
 )
 
 TEST_DATA_DAY_2 = """
