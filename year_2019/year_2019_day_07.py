@@ -1,7 +1,7 @@
 import itertools
 import time
 
-from utils.download_data import check_and_download_data
+from utils.download_data import download_data
 from year_2019.intcode import IntcodeComp, ProgramStatus
 
 
@@ -67,7 +67,7 @@ def solve_part2(
 def main() -> None:
     data_file_path = None
     try:
-        data_file_path = check_and_download_data(__file__)
+        data_file_path = download_data(__file__)
     except Exception as e:
         print(f'ERROR: {e}')
 
@@ -76,12 +76,12 @@ def main() -> None:
 
         start = time.monotonic()
         res1 = solve_part1(data)
-        print('Part 1:', res1)
+        print('Part 1:', res1, res1 == 14902)
         print(time.monotonic() - start)
 
         start = time.monotonic()
         res2 = solve_part2(data)
-        print('Part 2:', res2)
+        print('Part 2:', res2, res2 == 6489132)
         print(time.monotonic() - start)
 
 

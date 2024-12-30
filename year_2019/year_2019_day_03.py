@@ -1,6 +1,6 @@
 import time
 
-from utils.download_data import check_and_download_data
+from utils.download_data import download_data
 
 
 def read_data(file_path: str) -> list[list[str]]:
@@ -51,7 +51,7 @@ def solve_part2(data: list[list[str]]) -> int:
 def main() -> None:
     data_file_path = None
     try:
-        data_file_path = check_and_download_data(__file__)
+        data_file_path = download_data(__file__)
     except Exception as e:
         print(f'ERROR: {e}')
 

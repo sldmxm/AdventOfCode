@@ -15,7 +15,7 @@ def get_year_day(py_path: str) -> tuple[str, str]:
     return year, day
 
 
-def check_and_download_data(py_path: str) -> str:
+def download_data(py_path: str) -> str:
     year, day = get_year_day(py_path)
     file_path = f'data/year{year}day{day}.txt'
 

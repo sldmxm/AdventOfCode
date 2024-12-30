@@ -4,17 +4,10 @@ from utils.download_data import download_data
 from year_2019.intcode import IntcodeComp
 
 
-def read_data(file_path: str) -> list[int]:
+def read_data(file_path: str) -> str:
     with open(file_path) as f:
-        line = f.read()
-    data = [int(n) for n in line.strip().split(',')]
+        data = f.read().strip()
     return data
-
-
-def solve(data: list[int], input_data: int) -> list[int]:
-    comp = IntcodeComp(code=data[:])
-    comp.run_whole_code(input_data=[input_data])
-    return comp.get_output()
 
 
 def main() -> None:
@@ -28,13 +21,17 @@ def main() -> None:
         data = read_data(data_file_path)
 
         start = time.monotonic()
-        res1 = solve(data, 1)
-        print('Part 1:', res1)
+        comp = IntcodeComp(data)
+        comp.run_whole_code(input_data=[1])
+        res1 = comp.pop_output()
+        print('Part 1:', res1, res1 == 2738720997)
         print(time.monotonic() - start)
 
         start = time.monotonic()
-        res2 = solve(data, 5)
-        print('Part 2:', res2)
+        comp = IntcodeComp(data)
+        comp.run_whole_code(input_data=[2])
+        res2 = comp.pop_output()
+        print('Part 2:', res2, res2 == 50894)
         print(time.monotonic() - start)
 
 
