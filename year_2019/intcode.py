@@ -1,25 +1,8 @@
+from abc import abstractmethod
 from collections import deque
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
-from typing import Callable, Optional
-
-
-class ParameterMode(Enum):
-    POSITION = 0
-    IMMEDIATE = 1
-    RELATIVE = 2
-
-
-class OffsetAfterInstruction(Enum):
-    STANDARD = 0
-    GO_TO = 1
-
-
-class Channel(Enum):
-    MEMORY = 10
-    OUTSIDE = 20
-    PROGRAM_RELATIVE_BASE = 21
-    NONE = 0
+from typing import Callable, Optional, Type
 
 
 class ProgramStatus(Enum):
@@ -29,334 +12,379 @@ class ProgramStatus(Enum):
     WAITING_INPUT = 3
 
 
-@dataclass
-class Parameter:
-    address: int
-    value: int
+class ParameterMode(Enum):
+    POSITION = 0
+    IMMEDIATE = 1
+    RELATIVE = 2
 
 
 @dataclass
-class Program:
-    memory: dict[int, int]
-    pointer: int
-    input: deque[int]
-    output: list[int]
-    status: ProgramStatus
-    relative_base: int
-    debug_mode: bool = False
+class InstructionResult:
+    next_pointer: int
+    status: ProgramStatus = ProgramStatus.RUNNING
 
 
-def _log(message: str, program: Program) -> None:
-    if program.debug_mode:
-        print(message)
+@dataclass
+class Memory:
+    data: dict[int, int] = field(default_factory=lambda: {0: 0})
+    relative_base: int = 0
 
-
-@dataclass(frozen=True)
-class Instruction:
-    name: str
-    opcode: int
-    parameters_num: int
-    parameters_channel: Channel
-    output_channel: Channel
-    offset_mode: OffsetAfterInstruction = OffsetAfterInstruction.STANDARD
-    command: Optional[Callable[..., int]] = None
-
-    def _get_parameter_offset(
-        self, parameter_number: int, program: Program
-    ) -> int:
-        def read_offset_modes() -> str:
-            instruction = str(program.memory[program.pointer])
-            modes = instruction[-3::-1]
-            modes += '0' * (self.parameters_num - len(modes))
-            modes += '0' if self.output_channel == Channel.MEMORY else ''
-            _log(
-                f'Instruction: {instruction}. Parameter modes: {modes}',
-                program,
-            )
-            return modes
-
-        offset_modes = read_offset_modes()
-        first_position = program.pointer + 1
-        mode = int(offset_modes[parameter_number])
+    def _get_address_by_mode(self, address: int, mode: ParameterMode) -> int:
         match mode:
-            case ParameterMode.POSITION.value:
-                _log(
-                    f'Parameter offset via POSITION mode'
-                    f' {program.memory.get(
-                        first_position + parameter_number)}',
-                    program,
-                )
-                return program.memory[first_position + parameter_number]
-            case ParameterMode.IMMEDIATE.value:
-                _log(
-                    f'Parameter offset via IMMEDIATE mode'
-                    f' {first_position + parameter_number}',
-                    program,
-                )
-                return first_position + parameter_number
-            case ParameterMode.RELATIVE.value:
-                _log(
-                    f'Parameter offset via RELATIVE mode'
-                    f' {program.relative_base
-                        + program.memory[
-                            first_position + parameter_number
-                            ]}',
-                    program,
-                )
-                return (
-                    program.relative_base
-                    + program.memory[first_position + parameter_number]
-                )
+            case ParameterMode.POSITION:
+                return self.data[address]
+            case ParameterMode.IMMEDIATE:
+                return address
+            case ParameterMode.RELATIVE:
+                return self.relative_base + self.data[address]
         raise ValueError(f'Unknown parameter mode: {mode}')
 
-    def _get_parameters(self, program: Program) -> tuple[int, ...]:
-        match self.parameters_channel:
-            case Channel.MEMORY:
-                parameters = []
-                for i in range(self.parameters_num):
-                    offset = self._get_parameter_offset(i, program)
-                    parameters.append(program.memory.get(offset, 0))
-                _log(f'Params: {parameters}', program)
-                return tuple(parameters)
-            case Channel.OUTSIDE:
-                _log(f'Param from inputs: {program.input[0]}', program)
-                return (program.input.popleft(),)
-        raise ValueError(
-            f'Unknown channel for parameter: {self.parameters_channel}'
+    def read(self, address: int, mode: ParameterMode) -> int:
+        read_address = self._get_address_by_mode(address, mode)
+        return self.data.get(read_address, 0)
+
+    def write(self, address: int, value: int, mode: ParameterMode) -> None:
+        write_address = self._get_address_by_mode(address, mode)
+        self.data[write_address] = value
+
+    def load_code(self, code: list[int]) -> None:
+        self.data = {address: value for address, value in enumerate(code)}
+
+    def read_all(self) -> dict[int, int]:
+        return self.data.copy()
+
+
+@dataclass
+class ExecutionContext:
+    pointer: int
+    input_queue: deque[int] = field(default_factory=deque)
+    output_list: list[int] = field(default_factory=list)
+    status: ProgramStatus = ProgramStatus.RESET
+    debug_mode: bool = False
+
+    def read_input(self) -> Optional[int]:
+        if not self.input_queue:
+            self.status = ProgramStatus.WAITING_INPUT
+            return None
+        return self.input_queue.popleft()
+
+    def write_output(self, value: int) -> None:
+        self.output_list.append(value)
+
+    def load_input(self, *values: int) -> None:
+        self.input_queue.extend(values)
+        if self.status == ProgramStatus.WAITING_INPUT:
+            self.status = ProgramStatus.RUNNING
+
+    def get_output(self) -> list[int]:
+        return self.output_list
+
+    def pop_output(self) -> int:
+        return self.output_list.pop()
+
+    def clear_output(self) -> None:
+        self.output_list.clear()
+
+
+class InstructionBase:
+    @property
+    @abstractmethod
+    def parameter_count(self) -> int:
+        pass
+
+    @abstractmethod
+    def _execute_with_modes(
+        self,
+        memory: Memory,
+        context: ExecutionContext,
+        modes: list[ParameterMode],
+    ) -> InstructionResult:
+        pass
+
+    def _read_parameter_modes(
+        self, memory: Memory, context: ExecutionContext
+    ) -> list[ParameterMode]:
+        instruction = memory.read(context.pointer, ParameterMode.IMMEDIATE)
+        modes_int = instruction // 100
+        modes = []
+        while modes_int:
+            modes.append(ParameterMode(modes_int % 10))
+            modes_int //= 10
+        return modes + [ParameterMode.POSITION] * (
+            self.parameter_count - len(modes)
         )
 
-    def _write_output(self, program: Program, result: int) -> None:
-        _log(f'Writing output: {result} to {self.output_channel}', program)
-        match self.output_channel:
-            case Channel.MEMORY:
-                output_parameter_position = self.parameters_num - (
-                    1 if self.parameters_channel == Channel.OUTSIDE else 0
-                )
+    def execute(self, memory: Memory, context: ExecutionContext) -> None:
+        modes = self._read_parameter_modes(memory, context)
+        result = self._execute_with_modes(memory, context, modes)
+        context.pointer = result.next_pointer
+        if result.status != ProgramStatus.RUNNING:
+            context.status = result.status
 
-                output_offset = self._get_parameter_offset(
-                    output_parameter_position, program
-                )
-                _log(
-                    f'Mem {output_offset}: '
-                    f'{program.memory.get(output_offset)} -> {result}',
-                    program,
-                )
-                program.memory[output_offset] = result
-            case Channel.OUTSIDE:
-                program.output.append(result)
-                _log(f'Program output: {program.output}', program)
-            case Channel.PROGRAM_RELATIVE_BASE:
-                program.relative_base += result
-                _log(
-                    f'Program relative base: {program.relative_base}', program
-                )
 
-    def _get_instruction_len(self) -> int:
-        result = 1
-        result += self.parameters_num
-        result -= 1 if self.parameters_channel == Channel.OUTSIDE else 0
-        result += 1 if self.output_channel == Channel.MEMORY else 0
-        return result
+class InstructionFactory:
+    _instructions: dict[int, Type[InstructionBase]] = {}
 
-    def _move_pointer(self, program: Program) -> None:
-        old_pointer = program.pointer
-        match self.offset_mode:
-            case OffsetAfterInstruction.STANDARD:
-                program.pointer += self._get_instruction_len()
-            case OffsetAfterInstruction.GO_TO:
-                parameters = self._get_parameters(program)
-                if parameters and len(parameters) == 2:
-                    parameter, new_pointer = parameters
-                    result = self.command(parameter) if self.command else None
-                    if result:
-                        program.pointer = new_pointer
-                    else:
-                        program.pointer += self._get_instruction_len()
-                else:
-                    raise ValueError(
-                        f'Insufficient parameters for {self.name} operation'
-                    )
-        _log(
-            f'Pointer after {self.name}: '
-            f'{old_pointer} -> {program.pointer} \n',
-            program,
+    @classmethod
+    def register(
+        cls, opcode: int
+    ) -> Callable[[Type[InstructionBase]], Type[InstructionBase]]:
+        def decorator(
+            instruction_class: Type[InstructionBase],
+        ) -> Type[InstructionBase]:
+            cls._instructions[opcode] = instruction_class
+            return instruction_class
+
+        return decorator
+
+    def create_instruction(self, opcode: int) -> InstructionBase:
+        if opcode not in self._instructions:
+            raise ValueError(f'Unknown opcode: {opcode}')
+        return self._instructions[opcode]()
+
+
+@InstructionFactory.register(opcode=1)
+class AddInstruction(InstructionBase):
+    parameter_count = 3
+
+    def _execute_with_modes(
+        self,
+        memory: Memory,
+        context: ExecutionContext,
+        modes: list[ParameterMode],
+    ) -> InstructionResult:
+        value1 = memory.read(context.pointer + 1, modes[0])
+        value2 = memory.read(context.pointer + 2, modes[1])
+        memory.write(context.pointer + 3, value1 + value2, modes[2])
+        return InstructionResult(
+            next_pointer=context.pointer + self.parameter_count + 1
         )
 
-    def run(self, program: Program) -> None:
-        if (
-            self.parameters_channel != Channel.NONE
-            and self.output_channel != Channel.NONE
-            and self.command
-        ):
-            parameters = self._get_parameters(program)
-            result = self.command(*parameters)
-            self._write_output(program, result)
-        self._move_pointer(program)
+
+@InstructionFactory.register(opcode=2)
+class MulInstruction(InstructionBase):
+    parameter_count = 3
+
+    def _execute_with_modes(
+        self,
+        memory: Memory,
+        context: ExecutionContext,
+        modes: list[ParameterMode],
+    ) -> InstructionResult:
+        value1 = memory.read(context.pointer + 1, modes[0])
+        value2 = memory.read(context.pointer + 2, modes[1])
+        memory.write(context.pointer + 3, value1 * value2, modes[2])
+        return InstructionResult(
+            next_pointer=context.pointer + self.parameter_count + 1
+        )
+
+
+@InstructionFactory.register(opcode=99)
+class HaltInstruction(InstructionBase):
+    parameter_count = 0
+
+    def _execute_with_modes(
+        self,
+        memory: Memory,
+        context: ExecutionContext,
+        modes: list[ParameterMode],
+    ) -> InstructionResult:
+        return InstructionResult(
+            next_pointer=context.pointer, status=ProgramStatus.DONE
+        )
+
+
+@InstructionFactory.register(opcode=3)
+class InputInstruction(InstructionBase):
+    parameter_count = 1
+
+    def _execute_with_modes(
+        self,
+        memory: Memory,
+        context: ExecutionContext,
+        modes: list[ParameterMode],
+    ) -> InstructionResult:
+        value = context.read_input()
+        status = context.status
+        if value is not None:
+            memory.write(context.pointer + 1, value, modes[0])
+            next_pointer = context.pointer + self.parameter_count + 1
+        else:
+            next_pointer = context.pointer
+        return InstructionResult(next_pointer=next_pointer, status=status)
+
+
+@InstructionFactory.register(opcode=4)
+class OutputInstruction(InstructionBase):
+    parameter_count = 1
+
+    def _execute_with_modes(
+        self,
+        memory: Memory,
+        context: ExecutionContext,
+        modes: list[ParameterMode],
+    ) -> InstructionResult:
+        value = memory.read(context.pointer + 1, modes[0])
+        context.write_output(value)
+        return InstructionResult(
+            next_pointer=context.pointer + self.parameter_count + 1
+        )
+
+
+@InstructionFactory.register(opcode=5)
+class JumpIfTrueInstruction(InstructionBase):
+    parameter_count = 2
+
+    def _execute_with_modes(
+        self,
+        memory: Memory,
+        context: ExecutionContext,
+        modes: list[ParameterMode],
+    ) -> InstructionResult:
+        value = memory.read(context.pointer + 1, modes[0])
+        if value != 0:
+            next_pointer = memory.read(context.pointer + 2, modes[1])
+        else:
+            next_pointer = context.pointer + self.parameter_count + 1
+        return InstructionResult(next_pointer=next_pointer)
+
+
+@InstructionFactory.register(opcode=6)
+class JumpIfFalseInstruction(InstructionBase):
+    parameter_count = 2
+
+    def _execute_with_modes(
+        self,
+        memory: Memory,
+        context: ExecutionContext,
+        modes: list[ParameterMode],
+    ) -> InstructionResult:
+        value = memory.read(context.pointer + 1, modes[0])
+        if value == 0:
+            next_pointer = memory.read(context.pointer + 2, modes[1])
+        else:
+            next_pointer = context.pointer + self.parameter_count + 1
+        return InstructionResult(next_pointer=next_pointer)
+
+
+@InstructionFactory.register(opcode=7)
+class LessInstruction(InstructionBase):
+    parameter_count = 3
+
+    def _execute_with_modes(
+        self,
+        memory: Memory,
+        context: ExecutionContext,
+        modes: list[ParameterMode],
+    ) -> InstructionResult:
+        value1 = memory.read(context.pointer + 1, modes[0])
+        value2 = memory.read(context.pointer + 2, modes[1])
+        result = 1 if value1 < value2 else 0
+        memory.write(context.pointer + 3, result, modes[2])
+        return InstructionResult(
+            next_pointer=context.pointer + self.parameter_count + 1
+        )
+
+
+@InstructionFactory.register(opcode=8)
+class EqualInstruction(InstructionBase):
+    parameter_count = 3
+
+    def _execute_with_modes(
+        self,
+        memory: Memory,
+        context: ExecutionContext,
+        modes: list[ParameterMode],
+    ) -> InstructionResult:
+        value1 = memory.read(context.pointer + 1, modes[0])
+        value2 = memory.read(context.pointer + 2, modes[1])
+        result = 1 if value1 == value2 else 0
+        memory.write(context.pointer + 3, result, modes[2])
+        return InstructionResult(
+            next_pointer=context.pointer + self.parameter_count + 1
+        )
+
+
+@InstructionFactory.register(opcode=9)
+class ChangeRelativeBaselInstruction(InstructionBase):
+    parameter_count = 1
+
+    def _execute_with_modes(
+        self,
+        memory: Memory,
+        context: ExecutionContext,
+        modes: list[ParameterMode],
+    ) -> InstructionResult:
+        value = memory.read(context.pointer + 1, modes[0])
+        memory.relative_base += value
+        return InstructionResult(
+            next_pointer=context.pointer + self.parameter_count + 1
+        )
 
 
 class IntcodeComp:
-    _ADD = Instruction(
-        name='ADD',
-        opcode=1,
-        parameters_num=2,
-        parameters_channel=Channel.MEMORY,
-        output_channel=Channel.MEMORY,
-        command=lambda a, b: a + b,
-    )
-    _MUL = Instruction(
-        name='MUL',
-        opcode=2,
-        parameters_num=2,
-        parameters_channel=Channel.MEMORY,
-        output_channel=Channel.MEMORY,
-        command=lambda a, b: a * b,
-    )
-    _HLT = Instruction(
-        name='HLT',
-        opcode=99,
-        parameters_num=0,
-        parameters_channel=Channel.NONE,
-        output_channel=Channel.NONE,
-    )
-    _INP = Instruction(
-        name='INP',
-        opcode=3,
-        parameters_num=1,
-        parameters_channel=Channel.OUTSIDE,
-        output_channel=Channel.MEMORY,
-        command=lambda a: a,
-    )
-    _OUT = Instruction(
-        name='OUT',
-        opcode=4,
-        parameters_num=1,
-        parameters_channel=Channel.MEMORY,
-        output_channel=Channel.OUTSIDE,
-        command=lambda a: a,
-    )
-    _JIT = Instruction(
-        name='JIT',
-        opcode=5,
-        parameters_num=2,
-        parameters_channel=Channel.MEMORY,
-        output_channel=Channel.NONE,
-        offset_mode=OffsetAfterInstruction.GO_TO,
-        command=lambda a: a != 0,
-    )
-    _JIF = Instruction(
-        name='JIF',
-        opcode=6,
-        parameters_num=2,
-        parameters_channel=Channel.MEMORY,
-        output_channel=Channel.NONE,
-        offset_mode=OffsetAfterInstruction.GO_TO,
-        command=lambda a: a == 0,
-    )
-    _LT = Instruction(
-        name='LT',
-        opcode=7,
-        parameters_num=2,
-        parameters_channel=Channel.MEMORY,
-        output_channel=Channel.MEMORY,
-        command=lambda a, b: 1 if a < b else 0,
-    )
-    _EQ = Instruction(
-        name='EQ',
-        opcode=8,
-        parameters_num=2,
-        parameters_channel=Channel.MEMORY,
-        output_channel=Channel.MEMORY,
-        command=lambda a, b: 1 if a == b else 0,
-    )
-    _CRB = Instruction(
-        name='CRB',
-        opcode=9,
-        parameters_num=1,
-        parameters_channel=Channel.MEMORY,
-        output_channel=Channel.PROGRAM_RELATIVE_BASE,
-        command=lambda a: a,
-    )
-
-    _OPERATIONS = {
-        _ADD.opcode: _ADD,
-        _MUL.opcode: _MUL,
-        _HLT.opcode: _HLT,
-        _INP.opcode: _INP,
-        _OUT.opcode: _OUT,
-        _JIT.opcode: _JIT,
-        _JIF.opcode: _JIF,
-        _LT.opcode: _LT,
-        _EQ.opcode: _EQ,
-        _CRB.opcode: _CRB,
-    }
-
-    def __init__(self, code: list[int] | str) -> None:
-        self._program: Program = Program(
-            memory={},
+    def __init__(
+        self,
+        code: list[int] | str,
+    ) -> None:
+        self.memory = Memory()
+        self.context = ExecutionContext(
             pointer=0,
-            input=deque([]),
-            output=[],
             status=ProgramStatus.RESET,
-            relative_base=0,
         )
+        self.instruction_factory = InstructionFactory()
+
         if isinstance(code, str):
             code = list(map(int, code.split(',')))
-        self._program.memory = {
-            address: value for address, value in enumerate(code)
-        }
+        self.memory.load_code(code)
 
-    def _log(self, message: str) -> None:
-        if self._program.debug_mode:
-            print(message)
+    def _execute_next(self) -> None:
+        opcode = (
+            self.memory.read(
+                self.context.pointer, mode=ParameterMode.IMMEDIATE
+            )
+            % 100
+        )
+        instruction = self.instruction_factory.create_instruction(opcode)
+        if self.context.debug_mode:
+            print(
+                f'Executing {instruction.__class__.__name__} '
+                f'at pointer {self.context.pointer} \n'
+                f'Before {self.context=}'
+            )
+        instruction.execute(memory=self.memory, context=self.context)
+        if self.context.debug_mode:
+            print(f'After {self.context=}')
 
     def run_whole_code(
-        self, input_data: list[int] | None = None, debug_mode: bool = False
+        self,
+        input_data: list[int] | None = None,
+        debug_mode: bool = False,
     ) -> ProgramStatus:
-        self._program.debug_mode = debug_mode
+        self.context.debug_mode = debug_mode
         if input_data:
-            self._program.input.extend(input_data)
-        self._program.status = ProgramStatus.RUNNING
+            self.context.load_input(*input_data)
         while True:
-            op_code = int(
-                str(self._program.memory[self._program.pointer])[-2:]
-            )
-            instruction = IntcodeComp._OPERATIONS[op_code]
-            self._log(
-                f'Executing instruction: '
-                f'{instruction.name} at pointer {self._program.pointer}'
-            )
-            self._log(
-                f'Code: {
-                self.get_memory()[
-                self._program.pointer:self._program.pointer + 4]}'
-            )
-            if (
-                (done := instruction == IntcodeComp._HLT)
-                or instruction == IntcodeComp._INP
-                and not self._program.input
+            self._execute_next()
+            if self.context.status in (
+                ProgramStatus.DONE,
+                ProgramStatus.WAITING_INPUT,
             ):
-                self._program.status = (
-                    ProgramStatus.DONE if done else ProgramStatus.WAITING_INPUT
-                )
-                return self._program.status
-            instruction.run(self._program)
+                return self.context.status
 
     def get_memory(self) -> list[int]:
         return [
             val
             for _, val in sorted(
-                [(k, v) for k, v in self._program.memory.items()]
+                [(k, v) for k, v in self.memory.read_all().items()]
             )
         ]
 
-    def get_memory_as_dict(self) -> dict[int, int]:
-        return self._program.memory
-
     def get_output(self) -> list[int]:
-        return self._program.output
+        return self.context.get_output()
 
     def pop_output(self) -> int:
-        return self._program.output.pop()
+        return self.context.pop_output()
 
     def get_status(self) -> ProgramStatus:
-        return self._program.status
+        return self.context.status

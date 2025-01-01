@@ -1,10 +1,5 @@
 from year_2019.intcode import IntcodeComp
 
-# from year_2019.year_2019_day_09 import (
-#     solve_part1,
-#     solve_part2,
-# )
-
 
 def test_solve_new_intcode_same_code() -> None:
     data = '109,1,204,-1,1001,100,1,100,1008,100,16,101,1006,101,0,99'
