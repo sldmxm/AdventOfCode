@@ -1,15 +1,15 @@
 from abc import abstractmethod
 from collections import deque
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import Enum, auto
 from typing import Callable, Optional, Type
 
 
 class ProgramStatus(Enum):
-    RESET = 0
-    RUNNING = 1
-    DONE = 99
-    WAITING_INPUT = 3
+    RESET = auto()
+    RUNNING = auto()
+    DONE = auto()
+    WAITING_INPUT = auto()
 
 
 class ParameterMode(Enum):
