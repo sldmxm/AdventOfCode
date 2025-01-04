@@ -78,7 +78,7 @@ def solve_part2(data: str) -> int:
             )
 
         render_screen()
-        time.sleep(0.2)
+        time.sleep(0.1)
 
         if comp.get_status() == ProgramStatus.DONE:
             return game_data.score
