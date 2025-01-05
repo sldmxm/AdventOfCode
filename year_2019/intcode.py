@@ -1,3 +1,4 @@
+import copy
 from abc import abstractmethod
 from collections import deque
 from dataclasses import dataclass, field
@@ -388,3 +389,8 @@ class IntcodeComp:
 
     def get_status(self) -> ProgramStatus:
         return self.context.status
+
+    def clone(self) -> 'IntcodeComp':
+        cloned = IntcodeComp(self.get_memory())
+        cloned.context = copy.deepcopy(self.context)
+        return cloned
